@@ -1,13 +1,19 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"time"
 )
 
+type LockAnswer struct {
+	Token     string
+	ExpiresAt time.Time
+}
 func main() {
 	lockCommand := flag.NewFlagSet("lock, l", flag.ExitOnError)
 	getCommand := flag.NewFlagSet("get, g", flag.ExitOnError)
@@ -15,6 +21,7 @@ func main() {
 	unlockCommand := flag.NewFlagSet("unlock, u", flag.ExitOnError)
 
 	lockNamePtr := lockCommand.String("name", "", "Name of the mutex")
+	lockOutputPtr := lockCommand.String("output", "json", "Formats the output {json|token}")
 
 	getNamePtr := getCommand.String("name", "", "Name of the mutex")
 
@@ -49,8 +56,27 @@ func main() {
 		response, err := http.Get("http://localhost:3002/v1/mutex/" + *lockNamePtr + "/lock")
 		if err != nil {
 			fmt.Printf("The HTTP request failed with error %s\n", err)
-		} else {
+		}
+
 			data, _ := ioutil.ReadAll(response.Body)
+
+		if response.StatusCode != 200 {
+			fmt.Println("Could not lock mutex!")
+			os.Exit(1)
+		}
+
+		switch *lockOutputPtr {
+		case "json":
+			fmt.Println(string(data))
+		case "token":
+			var answer LockAnswer
+			err = json.Unmarshal([]byte(data), &answer)
+			if err != nil || answer.Token == "" {
+				fmt.Println("Could not lock mutex!")
+				os.Exit(1)
+			}
+			fmt.Println(answer.Token)
+		default:
 			fmt.Println(string(data))
 		}
 	}
