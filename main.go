@@ -125,7 +125,7 @@ func parseArguments() {
 func handleLockCommand() {
 	response, err := http.Get("http://localhost:3002/v1/mutex/" + LockName + "/lock")
 	if err != nil {
-		fmt.Printf("The HTTP request failed with error %s\n", err)
+		exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
 	}
 
 	data, _ := ioutil.ReadAll(response.Body)
@@ -152,7 +152,7 @@ func handleLockCommand() {
 func handleGetCommand() {
 	response, err := http.Get("http://localhost:3002/v1/mutex/" + GetName)
 	if err != nil {
-		fmt.Printf("The HTTP request failed with error %s\n", err)
+		exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
 	} else {
 		data, _ := ioutil.ReadAll(response.Body)
 		fmt.Println(string(data))
@@ -162,7 +162,7 @@ func handleGetCommand() {
 func handleRefreshCommand() {
 	response, err := http.Get("http://localhost:3002/v1/mutex/" + RefreshName + "/refresh/" + RefreshToken)
 	if err != nil {
-		fmt.Printf("The HTTP request failed with error %s\n", err)
+		exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
 	} else {
 		data, _ := ioutil.ReadAll(response.Body)
 		fmt.Println(string(data))
@@ -172,7 +172,7 @@ func handleRefreshCommand() {
 func handleUnlockCommand() {
 	response, err := http.Get("http://localhost:3002/v1/mutex/" + UnlockName + "/unlock/" + UnlockToken)
 	if err != nil {
-		fmt.Printf("The HTTP request failed with error %s\n", err)
+		exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
 	} else {
 		data, _ := ioutil.ReadAll(response.Body)
 		fmt.Println(string(data))
