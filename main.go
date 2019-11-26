@@ -20,102 +20,164 @@ func exitWithMessage(message string) {
 	os.Exit(1)
 }
 
-func main() {
-	lockCommand := flag.NewFlagSet("lock, l", flag.ExitOnError)
-	getCommand := flag.NewFlagSet("get, g", flag.ExitOnError)
-	refreshCommand := flag.NewFlagSet("refresh, r", flag.ExitOnError)
-	unlockCommand := flag.NewFlagSet("unlock, u", flag.ExitOnError)
+var LockCommand *flag.FlagSet
+var GetCommand *flag.FlagSet
+var RefreshCommand *flag.FlagSet
+var UnlockCommand *flag.FlagSet
 
-	lockNamePtr := lockCommand.String("name", "", "Name of the mutex")
-	lockOutputPtr := lockCommand.String("output", "json", "Formats the output {json|token}")
+var LockName string
+var LockOutput string
 
-	getNamePtr := getCommand.String("name", "", "Name of the mutex")
+var GetName string
 
-	refreshNamePtr := refreshCommand.String("name", "", "Name of the mutex")
-	refreshTokenPtr := refreshCommand.String("token", "", "Token for manipulating an existing mutex")
+var RefreshName string
+var RefreshToken string
 
-	unlockNamePtr := unlockCommand.String("name", "", "Name of the mutex")
-	unlockTokenPtr := unlockCommand.String("token", "", "Token for manipulating an existing mutex")
+var UnlockName string
+var UnlockToken string
 
+func createFlagSets() {
+	LockCommand = flag.NewFlagSet("lock, l", flag.ExitOnError)
+	GetCommand = flag.NewFlagSet("get, g", flag.ExitOnError)
+	RefreshCommand = flag.NewFlagSet("refresh, r", flag.ExitOnError)
+	UnlockCommand = flag.NewFlagSet("unlock, u", flag.ExitOnError)
+}
+
+func setCommands() {
+	setLockCommands()
+	setGetCommands()
+	setRefreshCommands()
+	setUnlockCommands()
+}
+
+func setLockCommands() {
+	LockCommand.StringVar(&LockName, "name", "", "Name of the mutex")
+	LockCommand.StringVar(&LockName, "n", "", "Name of the mutex (shorthand)")
+	LockCommand.StringVar(&LockOutput, "output", "json", "Formats the output {json|token}")
+	LockCommand.StringVar(&LockOutput, "o", "json", "Formats the output {json|token} (shorthand)")
+}
+
+func setGetCommands() {
+	GetCommand.StringVar(&GetName, "name", "", "Name of the mutex")
+	GetCommand.StringVar(&GetName, "n", "", "Name of the mutex (shorthand)")
+}
+
+func setRefreshCommands() {
+	RefreshCommand.StringVar(&RefreshName, "name", "", "Name of the mutex")
+	RefreshCommand.StringVar(&RefreshName, "n", "", "Name of the mutex (shorthand)")
+	RefreshCommand.StringVar(&RefreshToken, "token", "", "Token for manipulating an existing mutex")
+	RefreshCommand.StringVar(&RefreshToken, "t", "", "Token for manipulating an existing mutex (shorthand)")
+}
+
+func setUnlockCommands() {
+	UnlockCommand.StringVar(&UnlockName, "name", "", "Name of the mutex")
+	UnlockCommand.StringVar(&UnlockName, "n", "", "Name of the mutex (shorthand)")
+	UnlockCommand.StringVar(&UnlockToken, "token", "", "Token for manipulating an existing mutex")
+	UnlockCommand.StringVar(&UnlockToken, "t", "", "Token for manipulating an existing mutex (shorthand)")
+}
+
+func parseArguments() {
 	if len(os.Args) < 3 || os.Args[1] != "mutex" {
 		exitWithMessage("Wrong arguments")
 	}
 
 	switch os.Args[2] {
 	case "lock", "l":
-		lockCommand.Parse(os.Args[3:])
+		LockCommand.Parse(os.Args[3:])
 	case "get", "g":
-		getCommand.Parse(os.Args[3:])
+		GetCommand.Parse(os.Args[3:])
 	case "refresh", "r":
-		refreshCommand.Parse(os.Args[3:])
+		RefreshCommand.Parse(os.Args[3:])
 	case "unlock", "u":
-		unlockCommand.Parse(os.Args[3:])
+		UnlockCommand.Parse(os.Args[3:])
 	default:
 		fmt.Println("mutex lock")
-		lockCommand.PrintDefaults()
+		LockCommand.PrintDefaults()
 		fmt.Println("\nmutex get")
-		getCommand.PrintDefaults()
+		GetCommand.PrintDefaults()
 		fmt.Println("\nmutex refresh")
-		refreshCommand.PrintDefaults()
+		RefreshCommand.PrintDefaults()
 		fmt.Println("\nmutex unlock")
-		unlockCommand.PrintDefaults()
+		UnlockCommand.PrintDefaults()
 		os.Exit(1)
 	}
+}
 
-	if lockCommand.Parsed() {
-		response, err := http.Get("http://localhost:3002/v1/mutex/" + *lockNamePtr + "/lock")
-		if err != nil {
-			fmt.Printf("The HTTP request failed with error %s\n", err)
-		}
+func handleLockCommand() {
+	response, err := http.Get("http://localhost:3002/v1/mutex/" + LockName + "/lock")
+	if err != nil {
+		fmt.Printf("The HTTP request failed with error %s\n", err)
+	}
 
-		data, _ := ioutil.ReadAll(response.Body)
+	data, _ := ioutil.ReadAll(response.Body)
 
-		if response.StatusCode != 200 {
+	if response.StatusCode != 200 {
+		exitWithMessage("Could not lock mutex!")
+	}
+
+	switch LockOutput {
+	case "json":
+		fmt.Println(string(data))
+	case "token":
+		var answer LockAnswer
+		err = json.Unmarshal([]byte(data), &answer)
+		if err != nil || answer.Token == "" {
 			exitWithMessage("Could not lock mutex!")
 		}
+		fmt.Println(answer.Token)
+	default:
+		fmt.Println(string(data))
+	}
+}
 
-		switch *lockOutputPtr {
-		case "json":
-			fmt.Println(string(data))
-		case "token":
-			var answer LockAnswer
-			err = json.Unmarshal([]byte(data), &answer)
-			if err != nil || answer.Token == "" {
-				exitWithMessage("Could not lock mutex!")
-			}
-			fmt.Println(answer.Token)
-		default:
-			fmt.Println(string(data))
-		}
+func handleGetCommand() {
+	response, err := http.Get("http://localhost:3002/v1/mutex/" + GetName)
+	if err != nil {
+		fmt.Printf("The HTTP request failed with error %s\n", err)
+	} else {
+		data, _ := ioutil.ReadAll(response.Body)
+		fmt.Println(string(data))
+	}
+}
+
+func handleRefreshCommand() {
+	response, err := http.Get("http://localhost:3002/v1/mutex/" + RefreshName + "/refresh/" + RefreshToken)
+	if err != nil {
+		fmt.Printf("The HTTP request failed with error %s\n", err)
+	} else {
+		data, _ := ioutil.ReadAll(response.Body)
+		fmt.Println(string(data))
+	}
+}
+
+func handleUnlockCommand() {
+	response, err := http.Get("http://localhost:3002/v1/mutex/" + UnlockName + "/unlock/" + UnlockToken)
+	if err != nil {
+		fmt.Printf("The HTTP request failed with error %s\n", err)
+	} else {
+		data, _ := ioutil.ReadAll(response.Body)
+		fmt.Println(string(data))
+	}
+}
+
+func main() {
+	createFlagSets()
+	setCommands()
+	parseArguments()
+
+	if LockCommand.Parsed() {
+		handleLockCommand()
 	}
 
-	if getCommand.Parsed() {
-		response, err := http.Get("http://localhost:3002/v1/mutex/" + *getNamePtr)
-		if err != nil {
-			fmt.Printf("The HTTP request failed with error %s\n", err)
-		} else {
-			data, _ := ioutil.ReadAll(response.Body)
-			fmt.Println(string(data))
-		}
+	if GetCommand.Parsed() {
+		handleGetCommand()
 	}
 
-	if refreshCommand.Parsed() {
-		response, err := http.Get("http://localhost:3002/v1/mutex/" + *refreshNamePtr + "/refresh/" + *refreshTokenPtr)
-		if err != nil {
-			fmt.Printf("The HTTP request failed with error %s\n", err)
-		} else {
-			data, _ := ioutil.ReadAll(response.Body)
-			fmt.Println(string(data))
-		}
+	if RefreshCommand.Parsed() {
+		handleRefreshCommand()
 	}
 
-	if unlockCommand.Parsed() {
-		response, err := http.Get("http://localhost:3002/v1/mutex/" + *unlockNamePtr + "/unlock/" + *unlockTokenPtr)
-		if err != nil {
-			fmt.Printf("The HTTP request failed with error %s\n", err)
-		} else {
-			data, _ := ioutil.ReadAll(response.Body)
-			fmt.Println(string(data))
-		}
+	if UnlockCommand.Parsed() {
+		handleUnlockCommand()
 	}
 }
