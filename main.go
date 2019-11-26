@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -24,6 +26,7 @@ var LockCommand *flag.FlagSet
 var GetCommand *flag.FlagSet
 var RefreshCommand *flag.FlagSet
 var UnlockCommand *flag.FlagSet
+var AutoRefreshCommand *flag.FlagSet
 
 var LockName string
 var LockOutput string
@@ -36,11 +39,15 @@ var RefreshToken string
 var UnlockName string
 var UnlockToken string
 
+var AutoRefreshName string
+var AutoRefreshToken string
+
 func createFlagSets() {
 	LockCommand = flag.NewFlagSet("lock, l", flag.ExitOnError)
 	GetCommand = flag.NewFlagSet("get, g", flag.ExitOnError)
 	RefreshCommand = flag.NewFlagSet("refresh, r", flag.ExitOnError)
 	UnlockCommand = flag.NewFlagSet("unlock, u", flag.ExitOnError)
+	AutoRefreshCommand = flag.NewFlagSet("auto-refresh, a", flag.ExitOnError)
 }
 
 func setCommands() {
@@ -48,6 +55,7 @@ func setCommands() {
 	setGetCommands()
 	setRefreshCommands()
 	setUnlockCommands()
+	setAutoRefreshCommands()
 }
 
 func setLockCommands() {
@@ -76,6 +84,13 @@ func setUnlockCommands() {
 	UnlockCommand.StringVar(&UnlockToken, "t", "", "Token for manipulating an existing mutex (shorthand)")
 }
 
+func setAutoRefreshCommands() {
+	AutoRefreshCommand.StringVar(&AutoRefreshName, "name", "", "Name of the mutex")
+	AutoRefreshCommand.StringVar(&AutoRefreshName, "n", "", "Name of the mutex (shorthand)")
+	AutoRefreshCommand.StringVar(&AutoRefreshToken, "token", "", "Token for manipulating an existing mutex")
+	AutoRefreshCommand.StringVar(&AutoRefreshToken, "t", "", "Token for manipulating an existing mutex (shorthand)")
+}
+
 func parseArguments() {
 	if len(os.Args) < 3 || os.Args[1] != "mutex" {
 		exitWithMessage("Wrong arguments")
@@ -90,6 +105,8 @@ func parseArguments() {
 		RefreshCommand.Parse(os.Args[3:])
 	case "unlock", "u":
 		UnlockCommand.Parse(os.Args[3:])
+	case "auto-refresh", "a":
+		AutoRefreshCommand.Parse(os.Args[3:])
 	default:
 		fmt.Println("mutex lock")
 		LockCommand.PrintDefaults()
@@ -99,6 +116,8 @@ func parseArguments() {
 		RefreshCommand.PrintDefaults()
 		fmt.Println("\nmutex unlock")
 		UnlockCommand.PrintDefaults()
+		fmt.Println("\nmutex auto-refresh")
+		AutoRefreshCommand.PrintDefaults()
 		os.Exit(1)
 	}
 }
@@ -160,6 +179,37 @@ func handleUnlockCommand() {
 	}
 }
 
+func handleAutoRefreshCommand() {
+	//unlock when user aborts autorefresh
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-c
+		response, err := http.Get("http://localhost:3002/v1/mutex/" + AutoRefreshName + "/unlock/" + AutoRefreshToken)
+		if err != nil {
+			exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s", err))
+		}
+
+		data, _ := ioutil.ReadAll(response.Body)
+		exitWithMessage(string(data))
+	}()
+
+	for {
+		time.Sleep(5 * time.Second)
+
+		response, err := http.Get("http://localhost:3002/v1/mutex/" + AutoRefreshName + "/refresh/" + AutoRefreshToken)
+		if err != nil {
+			exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s", err))
+		}
+
+		if response.StatusCode != 200 {
+			exitWithMessage("Could not refresh anymore")
+		}
+		data, _ := ioutil.ReadAll(response.Body)
+		fmt.Println(string(data))
+	}
+}
+
 func main() {
 	createFlagSets()
 	setCommands()
@@ -179,5 +229,9 @@ func main() {
 
 	if UnlockCommand.Parsed() {
 		handleUnlockCommand()
+	}
+
+	if AutoRefreshCommand.Parsed() {
+		handleAutoRefreshCommand()
 	}
 }
