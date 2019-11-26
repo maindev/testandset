@@ -1,15 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 )
 
 func main() {
@@ -19,7 +15,6 @@ func main() {
 	unlockCommand := flag.NewFlagSet("unlock, u", flag.ExitOnError)
 
 	lockNamePtr := lockCommand.String("name", "", "Name of the mutex")
-	lockAutorefreshPtr := lockCommand.Bool("auto-refresh", false, "Automatically refresh a mutex with token until it expires or gets unlocked")
 
 	getNamePtr := getCommand.String("name", "", "Name of the mutex")
 
@@ -57,44 +52,6 @@ func main() {
 		} else {
 			data, _ := ioutil.ReadAll(response.Body)
 			fmt.Println(string(data))
-
-			if *lockAutorefreshPtr {
-				type LockAnswer struct {
-					Token string
-				}
-				var answer LockAnswer
-				json.Unmarshal([]byte(data), &answer)
-
-				//unlock when user aborts autorefresh
-				c := make(chan os.Signal)
-				signal.Notify(c, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-				go func() {
-					<-c
-					response, err := http.Get("http://localhost:3002/v1/mutex/" + *lockNamePtr + "/unlock/" + answer.Token)
-					if err != nil {
-						fmt.Printf("The HTTP request failed with error %s\n", err)
-					} else {
-						data, _ := ioutil.ReadAll(response.Body)
-						fmt.Println(string(data))
-					}
-					os.Exit(1)
-				}()
-
-				for {
-					time.Sleep(5 * time.Second)
-					response, err = http.Get("http://localhost:3002/v1/mutex/" + *lockNamePtr + "/refresh/" + answer.Token)
-					if err != nil {
-						fmt.Printf("The HTTP request failed with error %s\n", err)
-					} else {
-						if response.StatusCode != 200 {
-							fmt.Println("could not refresh anymore")
-							os.Exit(1)
-						}
-						data, _ = ioutil.ReadAll(response.Body)
-						fmt.Println(string(data))
-					}
-				}
-			}
 		}
 	}
 
