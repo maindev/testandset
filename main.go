@@ -14,6 +14,12 @@ type LockAnswer struct {
 	Token     string
 	ExpiresAt time.Time
 }
+
+func exitWithMessage(message string) {
+	fmt.Println(message)
+	os.Exit(1)
+}
+
 func main() {
 	lockCommand := flag.NewFlagSet("lock, l", flag.ExitOnError)
 	getCommand := flag.NewFlagSet("get, g", flag.ExitOnError)
@@ -31,11 +37,8 @@ func main() {
 	unlockNamePtr := unlockCommand.String("name", "", "Name of the mutex")
 	unlockTokenPtr := unlockCommand.String("token", "", "Token for manipulating an existing mutex")
 
-	flag.Parse()
-
 	if len(os.Args) < 3 || os.Args[1] != "mutex" {
-		fmt.Println("Wrong arguments")
-		os.Exit(1)
+		exitWithMessage("Wrong arguments")
 	}
 
 	switch os.Args[2] {
@@ -48,7 +51,14 @@ func main() {
 	case "unlock", "u":
 		unlockCommand.Parse(os.Args[3:])
 	default:
-		flag.PrintDefaults()
+		fmt.Println("mutex lock")
+		lockCommand.PrintDefaults()
+		fmt.Println("\nmutex get")
+		getCommand.PrintDefaults()
+		fmt.Println("\nmutex refresh")
+		refreshCommand.PrintDefaults()
+		fmt.Println("\nmutex unlock")
+		unlockCommand.PrintDefaults()
 		os.Exit(1)
 	}
 
@@ -58,11 +68,10 @@ func main() {
 			fmt.Printf("The HTTP request failed with error %s\n", err)
 		}
 
-			data, _ := ioutil.ReadAll(response.Body)
+		data, _ := ioutil.ReadAll(response.Body)
 
 		if response.StatusCode != 200 {
-			fmt.Println("Could not lock mutex!")
-			os.Exit(1)
+			exitWithMessage("Could not lock mutex!")
 		}
 
 		switch *lockOutputPtr {
@@ -72,8 +81,7 @@ func main() {
 			var answer LockAnswer
 			err = json.Unmarshal([]byte(data), &answer)
 			if err != nil || answer.Token == "" {
-				fmt.Println("Could not lock mutex!")
-				os.Exit(1)
+				exitWithMessage("Could not lock mutex!")
 			}
 			fmt.Println(answer.Token)
 		default:
