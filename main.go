@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,6 +23,8 @@ func exitWithMessage(message string) {
 	fmt.Println(message)
 	os.Exit(1)
 }
+
+var Verbose bool
 
 var LockName string
 var LockOutput string
@@ -110,6 +113,11 @@ func setCommands() {
 	setRefreshCommands()
 	setUnlockCommands()
 	setAutoRefreshCommands()
+	setPersistantFlags()
+}
+
+func setPersistantFlags() {
+	RootCommand.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose mode")
 }
 
 func setLockCommands() {
@@ -145,15 +153,25 @@ func setAutoRefreshCommands() {
 	AutoRefreshCommand.MarkFlagRequired("token")
 }
 
+func writeVerboseMessage(message string) {
+	if Verbose {
+		log.Println(message)
+	}
+}
+
 func tryLockViaPolling(tryUntil time.Time) []byte {
 	pollTime := 5
 
 	if LockTimeout < 5 {
+		writeVerboseMessage(fmt.Sprintf("pollTime set to %d", LockTimeout))
 		pollTime = LockTimeout
 	}
 
 	for {
-		time.Sleep(time.Duration(pollTime) * time.Second)
+		sleepTime := time.Duration(pollTime) * time.Second
+		writeVerboseMessage(fmt.Sprintf("Sleeping for %v", sleepTime))
+
+		time.Sleep(sleepTime)
 		if time.Now().After(tryUntil) {
 			exitWithMessage("Timeout ellapsed. Could not lock mutex!")
 		}
@@ -163,18 +181,26 @@ func tryLockViaPolling(tryUntil time.Time) []byte {
 		}
 		data, _ := ioutil.ReadAll(response.Body)
 
+		if response.StatusCode != 200 {
+			writeVerboseMessage("Mutex `" + LockName + "` still in use")
+		}
+
 		if response.StatusCode == 200 {
+			writeVerboseMessage("Lock successful for name `" + LockName + "`")
 			return data
 		}
 	}
 }
 
 func setLockOutput(data []byte) {
+	writeVerboseMessage("Write output as " + LockOutput)
+
 	switch LockOutput {
 	case "json":
 		fmt.Println(string(data))
 	case "token":
 		var answer LockAnswer
+		writeVerboseMessage(fmt.Sprintf("Unmarshalling json: %v", string(data)))
 		err := json.Unmarshal([]byte(data), &answer)
 		if err != nil || answer.Token == "" {
 			exitWithMessage("Could not lock mutex!")
@@ -186,15 +212,23 @@ func setLockOutput(data []byte) {
 }
 
 func handleLockCommand() {
-	response, err := http.Get("http://localhost:3002/v1/mutex/" + LockName + "/lock")
+	url := "http://localhost:3002/v1/mutex/" + LockName + "/lock"
+	writeVerboseMessage("Executing " + url)
+	response, err := http.Get(url)
 	if err != nil {
 		exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
 	}
 
 	tryUntil := time.Now().Add(time.Duration(LockTimeout) * time.Second)
+
+	if LockTimeout > 0 {
+		writeVerboseMessage(fmt.Sprintf("Try lock again until %v", tryUntil))
+	}
+
 	data, _ := ioutil.ReadAll(response.Body)
 
 	if response.StatusCode != 200 {
+		writeVerboseMessage("StatusCode != 200 ")
 		if LockTimeout > 0 {
 			data = tryLockViaPolling(tryUntil)
 		} else {
@@ -206,7 +240,9 @@ func handleLockCommand() {
 }
 
 func handleGetCommand() {
-	response, err := http.Get("http://localhost:3002/v1/mutex/" + GetName)
+	url := "http://localhost:3002/v1/mutex/" + GetName
+	writeVerboseMessage("Executing " + url)
+	response, err := http.Get(url)
 	if err != nil {
 		exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
 	} else {
@@ -216,7 +252,9 @@ func handleGetCommand() {
 }
 
 func handleRefreshCommand() {
-	response, err := http.Get("http://localhost:3002/v1/mutex/" + RefreshName + "/refresh/" + RefreshToken)
+	url := "http://localhost:3002/v1/mutex/" + RefreshName + "/refresh/" + RefreshToken
+	writeVerboseMessage("Executing " + url)
+	response, err := http.Get(url)
 	if err != nil {
 		exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
 	} else {
@@ -226,7 +264,9 @@ func handleRefreshCommand() {
 }
 
 func handleUnlockCommand() {
-	response, err := http.Get("http://localhost:3002/v1/mutex/" + UnlockName + "/unlock/" + UnlockToken)
+	url := "http://localhost:3002/v1/mutex/" + UnlockName + "/unlock/" + UnlockToken
+	writeVerboseMessage("Executing " + url)
+	response, err := http.Get(url)
 	if err != nil {
 		exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
 	} else {
@@ -236,8 +276,11 @@ func handleUnlockCommand() {
 }
 
 func unlockWhenInterrupted(c chan os.Signal) {
+	writeVerboseMessage("Trying to unlock `" + AutoRefreshName + "`")
 	<-c
-	response, err := http.Get("http://localhost:3002/v1/mutex/" + AutoRefreshName + "/unlock/" + AutoRefreshToken)
+	url := "http://localhost:3002/v1/mutex/" + AutoRefreshName + "/unlock/" + AutoRefreshToken
+	writeVerboseMessage("Executing " + url)
+	response, err := http.Get(url)
 	if err != nil {
 		exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s", err))
 	}
@@ -247,9 +290,13 @@ func unlockWhenInterrupted(c chan os.Signal) {
 }
 
 func tryAutoRefresh() {
-	time.Sleep(5 * time.Second)
+	sleepTime := 5 * time.Second
+	writeVerboseMessage(fmt.Sprintf("Sleeping for %v", sleepTime))
+	time.Sleep(sleepTime)
 
-	response, err := http.Get("http://localhost:3002/v1/mutex/" + AutoRefreshName + "/refresh/" + AutoRefreshToken)
+	url := "http://localhost:3002/v1/mutex/" + AutoRefreshName + "/refresh/" + AutoRefreshToken
+	writeVerboseMessage("Executing " + url)
+	response, err := http.Get(url)
 	if err != nil {
 		exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s", err))
 	}
@@ -276,6 +323,8 @@ func handleAutoRefreshCommand() {
 func main() {
 	createCommandSet()
 	setCommands()
+
+	log.SetOutput(os.Stderr)
 
 	if err := RootCommand.Execute(); err != nil {
 		fmt.Println(err)
