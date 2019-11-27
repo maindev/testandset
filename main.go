@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -10,6 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 type LockAnswer struct {
@@ -21,12 +22,6 @@ func exitWithMessage(message string) {
 	fmt.Println(message)
 	os.Exit(1)
 }
-
-var LockCommand *flag.FlagSet
-var GetCommand *flag.FlagSet
-var RefreshCommand *flag.FlagSet
-var UnlockCommand *flag.FlagSet
-var AutoRefreshCommand *flag.FlagSet
 
 var LockName string
 var LockOutput string
@@ -43,12 +38,70 @@ var UnlockToken string
 var AutoRefreshName string
 var AutoRefreshToken string
 
-func createFlagSets() {
-	LockCommand = flag.NewFlagSet("lock, l", flag.ExitOnError)
-	GetCommand = flag.NewFlagSet("get, g", flag.ExitOnError)
-	RefreshCommand = flag.NewFlagSet("refresh, r", flag.ExitOnError)
-	UnlockCommand = flag.NewFlagSet("unlock, u", flag.ExitOnError)
-	AutoRefreshCommand = flag.NewFlagSet("auto-refresh, a", flag.ExitOnError)
+var RootCommand = &cobra.Command{
+	Use:   "testandset",
+	Short: "With TestAndSet you can create your own mutexes and intregrate it everywhere",
+	Long:  `With TestAndSet you can create your own mutexes and intregrate it everywhere. You can lock mutexes while running your code, disallowing others to run the code with the same mutex.`,
+}
+
+var MutexCommand = &cobra.Command{
+	Use:   "mutex",
+	Short: "You can create your own mutexes and intregrate it everywhere",
+	Long:  `You can create your own mutexes and intregrate it everywhere. With TestAndSet you can lock mutexes while running your code, disallowing others to run the code with the same mutex.`,
+}
+
+var LockCommand = &cobra.Command{
+	Use:   "lock",
+	Short: "Locks a mutex",
+	Long:  `You can lock a mutex for an amount of time.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		handleLockCommand()
+	},
+}
+
+var GetCommand = &cobra.Command{
+	Use:   "get",
+	Short: "Locks a mutex",
+	Long:  `You can lock a mutex for an amount of time.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		handleGetCommand()
+	},
+}
+
+var RefreshCommand = &cobra.Command{
+	Use:   "refresh",
+	Short: "Refreshs a mutex",
+	Long:  `You can refresh a mutex with name and token.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		handleRefreshCommand()
+	},
+}
+
+var UnlockCommand = &cobra.Command{
+	Use:   "unlock",
+	Short: "Unlocks a mutex",
+	Long:  `You can unlock a mutex with name and token.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		handleUnlockCommand()
+	},
+}
+
+var AutoRefreshCommand = &cobra.Command{
+	Use:   "auto-refresh",
+	Short: "Automatically refreshs a mutex",
+	Long:  `You can automatically refresh a mutex with name and token.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		handleAutoRefreshCommand()
+	},
+}
+
+func createCommandSet() {
+	RootCommand.AddCommand(MutexCommand)
+	MutexCommand.AddCommand(LockCommand)
+	MutexCommand.AddCommand(GetCommand)
+	MutexCommand.AddCommand(RefreshCommand)
+	MutexCommand.AddCommand(UnlockCommand)
+	MutexCommand.AddCommand(AutoRefreshCommand)
 }
 
 func setCommands() {
@@ -60,69 +113,36 @@ func setCommands() {
 }
 
 func setLockCommands() {
-	LockCommand.StringVar(&LockName, "name", "", "Name of the mutex")
-	LockCommand.StringVar(&LockName, "n", "", "Name of the mutex (shorthand)")
-	LockCommand.StringVar(&LockOutput, "output", "json", "Formats the output {json|token}")
-	LockCommand.StringVar(&LockOutput, "o", "json", "Formats the output {json|token} (shorthand)")
-	LockCommand.IntVar(&LockTimeout, "timeout", 0, "Time in seconds with automatically trying to lock a mutex, when it is already lock by someone else")
-	LockCommand.IntVar(&LockTimeout, "t", 0, "Time in seconds with automatically trying to lock a mutex, when it is already lock by someone else (shorthand)")
+	LockCommand.Flags().StringVarP(&LockName, "name", "n", "", "Name of the mutex")
+	LockCommand.MarkFlagRequired("name")
+	LockCommand.Flags().StringVarP(&LockOutput, "output", "o", "json", "Formats the output {json|token}")
+	LockCommand.Flags().IntVarP(&LockTimeout, "timeout", "t", 0, "Time in seconds with automatically trying to lock a mutex, when it is already lock by someone else")
 }
 
 func setGetCommands() {
-	GetCommand.StringVar(&GetName, "name", "", "Name of the mutex")
-	GetCommand.StringVar(&GetName, "n", "", "Name of the mutex (shorthand)")
+	GetCommand.Flags().StringVarP(&GetName, "name", "n", "", "Name of the mutex")
+	GetCommand.MarkFlagRequired("name")
 }
 
 func setRefreshCommands() {
-	RefreshCommand.StringVar(&RefreshName, "name", "", "Name of the mutex")
-	RefreshCommand.StringVar(&RefreshName, "n", "", "Name of the mutex (shorthand)")
-	RefreshCommand.StringVar(&RefreshToken, "token", "", "Token for manipulating an existing mutex")
-	RefreshCommand.StringVar(&RefreshToken, "t", "", "Token for manipulating an existing mutex (shorthand)")
+	RefreshCommand.Flags().StringVarP(&RefreshName, "name", "n", "", "Name of the mutex")
+	RefreshCommand.MarkFlagRequired("name")
+	RefreshCommand.Flags().StringVarP(&RefreshToken, "token", "t", "", "Token for manipulating an existing mutex")
+	RefreshCommand.MarkFlagRequired("token")
 }
 
 func setUnlockCommands() {
-	UnlockCommand.StringVar(&UnlockName, "name", "", "Name of the mutex")
-	UnlockCommand.StringVar(&UnlockName, "n", "", "Name of the mutex (shorthand)")
-	UnlockCommand.StringVar(&UnlockToken, "token", "", "Token for manipulating an existing mutex")
-	UnlockCommand.StringVar(&UnlockToken, "t", "", "Token for manipulating an existing mutex (shorthand)")
+	UnlockCommand.Flags().StringVarP(&UnlockName, "name", "n", "", "Name of the mutex")
+	UnlockCommand.MarkFlagRequired("name")
+	UnlockCommand.Flags().StringVarP(&UnlockToken, "token", "t", "", "Token for manipulating an existing mutex")
+	UnlockCommand.MarkFlagRequired("token")
 }
 
 func setAutoRefreshCommands() {
-	AutoRefreshCommand.StringVar(&AutoRefreshName, "name", "", "Name of the mutex")
-	AutoRefreshCommand.StringVar(&AutoRefreshName, "n", "", "Name of the mutex (shorthand)")
-	AutoRefreshCommand.StringVar(&AutoRefreshToken, "token", "", "Token for manipulating an existing mutex")
-	AutoRefreshCommand.StringVar(&AutoRefreshToken, "t", "", "Token for manipulating an existing mutex (shorthand)")
-}
-
-func parseArguments() {
-	if len(os.Args) < 3 || os.Args[1] != "mutex" {
-		exitWithMessage("Wrong arguments")
-	}
-
-	switch os.Args[2] {
-	case "lock", "l":
-		LockCommand.Parse(os.Args[3:])
-	case "get", "g":
-		GetCommand.Parse(os.Args[3:])
-	case "refresh", "r":
-		RefreshCommand.Parse(os.Args[3:])
-	case "unlock", "u":
-		UnlockCommand.Parse(os.Args[3:])
-	case "auto-refresh", "a":
-		AutoRefreshCommand.Parse(os.Args[3:])
-	default:
-		fmt.Println("mutex lock")
-		LockCommand.PrintDefaults()
-		fmt.Println("\nmutex get")
-		GetCommand.PrintDefaults()
-		fmt.Println("\nmutex refresh")
-		RefreshCommand.PrintDefaults()
-		fmt.Println("\nmutex unlock")
-		UnlockCommand.PrintDefaults()
-		fmt.Println("\nmutex auto-refresh")
-		AutoRefreshCommand.PrintDefaults()
-		os.Exit(1)
-	}
+	AutoRefreshCommand.Flags().StringVarP(&AutoRefreshName, "name", "n", "", "Name of the mutex")
+	AutoRefreshCommand.MarkFlagRequired("name")
+	AutoRefreshCommand.Flags().StringVarP(&AutoRefreshToken, "token", "t", "", "Token for manipulating an existing mutex")
+	AutoRefreshCommand.MarkFlagRequired("token")
 }
 
 func tryLockViaPolling(tryUntil time.Time) []byte {
@@ -254,27 +274,11 @@ func handleAutoRefreshCommand() {
 }
 
 func main() {
-	createFlagSets()
+	createCommandSet()
 	setCommands()
-	parseArguments()
 
-	if LockCommand.Parsed() {
-		handleLockCommand()
-	}
-
-	if GetCommand.Parsed() {
-		handleGetCommand()
-	}
-
-	if RefreshCommand.Parsed() {
-		handleRefreshCommand()
-	}
-
-	if UnlockCommand.Parsed() {
-		handleUnlockCommand()
-	}
-
-	if AutoRefreshCommand.Parsed() {
-		handleAutoRefreshCommand()
+	if err := RootCommand.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
 }
