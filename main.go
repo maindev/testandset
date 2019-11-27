@@ -125,6 +125,46 @@ func parseArguments() {
 	}
 }
 
+func tryLockViaPolling(tryUntil time.Time) []byte {
+	pollTime := 5
+
+	if LockTimeout < 5 {
+		pollTime = LockTimeout
+	}
+
+	for {
+		time.Sleep(time.Duration(pollTime) * time.Second)
+		if time.Now().After(tryUntil) {
+			exitWithMessage("Timeout ellapsed. Could not lock mutex!")
+		}
+		response, err := http.Get("http://localhost:3002/v1/mutex/" + LockName + "/lock")
+		if err != nil {
+			exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
+		}
+		data, _ := ioutil.ReadAll(response.Body)
+
+		if response.StatusCode == 200 {
+			return data
+		}
+	}
+}
+
+func setLockOutput(data []byte) {
+	switch LockOutput {
+	case "json":
+		fmt.Println(string(data))
+	case "token":
+		var answer LockAnswer
+		err := json.Unmarshal([]byte(data), &answer)
+		if err != nil || answer.Token == "" {
+			exitWithMessage("Could not lock mutex!")
+		}
+		fmt.Println(answer.Token)
+	default:
+		fmt.Println(string(data))
+	}
+}
+
 func handleLockCommand() {
 	response, err := http.Get("http://localhost:3002/v1/mutex/" + LockName + "/lock")
 	if err != nil {
@@ -136,45 +176,13 @@ func handleLockCommand() {
 
 	if response.StatusCode != 200 {
 		if LockTimeout > 0 {
-			pollTime := 5
-
-			if LockTimeout < 5 {
-				pollTime = LockTimeout
-			}
-
-			for {
-				time.Sleep(time.Duration(pollTime) * time.Second)
-				if time.Now().After(tryUntil) {
-					exitWithMessage("Timeout ellapsed. Could not lock mutex!")
-				}
-				response, err = http.Get("http://localhost:3002/v1/mutex/" + LockName + "/lock")
-				if err != nil {
-					exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
-				}
-				data, _ = ioutil.ReadAll(response.Body)
-
-				if response.StatusCode == 200 {
-					break
-				}
-			}
+			data = tryLockViaPolling(tryUntil)
 		} else {
 			exitWithMessage("Could not lock mutex!")
 		}
 	}
 
-	switch LockOutput {
-	case "json":
-		fmt.Println(string(data))
-	case "token":
-		var answer LockAnswer
-		err = json.Unmarshal([]byte(data), &answer)
-		if err != nil || answer.Token == "" {
-			exitWithMessage("Could not lock mutex!")
-		}
-		fmt.Println(answer.Token)
-	default:
-		fmt.Println(string(data))
-	}
+	setLockOutput(data)
 }
 
 func handleGetCommand() {
@@ -207,34 +215,41 @@ func handleUnlockCommand() {
 	}
 }
 
+func unlockWhenInterrupted(c chan os.Signal) {
+	<-c
+	response, err := http.Get("http://localhost:3002/v1/mutex/" + AutoRefreshName + "/unlock/" + AutoRefreshToken)
+	if err != nil {
+		exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s", err))
+	}
+
+	data, _ := ioutil.ReadAll(response.Body)
+	exitWithMessage(string(data))
+}
+
+func tryAutoRefresh() {
+	time.Sleep(5 * time.Second)
+
+	response, err := http.Get("http://localhost:3002/v1/mutex/" + AutoRefreshName + "/refresh/" + AutoRefreshToken)
+	if err != nil {
+		exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s", err))
+	}
+
+	if response.StatusCode != 200 {
+		exitWithMessage("Could not refresh anymore")
+	}
+	data, _ := ioutil.ReadAll(response.Body)
+	fmt.Println(string(data))
+}
+
 func handleAutoRefreshCommand() {
 	//unlock when user aborts autorefresh
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-c
-		response, err := http.Get("http://localhost:3002/v1/mutex/" + AutoRefreshName + "/unlock/" + AutoRefreshToken)
-		if err != nil {
-			exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s", err))
-		}
 
-		data, _ := ioutil.ReadAll(response.Body)
-		exitWithMessage(string(data))
-	}()
+	go unlockWhenInterrupted(c)
 
 	for {
-		time.Sleep(5 * time.Second)
-
-		response, err := http.Get("http://localhost:3002/v1/mutex/" + AutoRefreshName + "/refresh/" + AutoRefreshToken)
-		if err != nil {
-			exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s", err))
-		}
-
-		if response.StatusCode != 200 {
-			exitWithMessage("Could not refresh anymore")
-		}
-		data, _ := ioutil.ReadAll(response.Body)
-		fmt.Println(string(data))
+		tryAutoRefresh()
 	}
 }
 
