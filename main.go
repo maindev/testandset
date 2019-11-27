@@ -30,6 +30,7 @@ var AutoRefreshCommand *flag.FlagSet
 
 var LockName string
 var LockOutput string
+var LockTimeout int
 
 var GetName string
 
@@ -63,6 +64,8 @@ func setLockCommands() {
 	LockCommand.StringVar(&LockName, "n", "", "Name of the mutex (shorthand)")
 	LockCommand.StringVar(&LockOutput, "output", "json", "Formats the output {json|token}")
 	LockCommand.StringVar(&LockOutput, "o", "json", "Formats the output {json|token} (shorthand)")
+	LockCommand.IntVar(&LockTimeout, "timeout", 0, "Time in seconds with automatically trying to lock a mutex, when it is already lock by someone else")
+	LockCommand.IntVar(&LockTimeout, "t", 0, "Time in seconds with automatically trying to lock a mutex, when it is already lock by someone else (shorthand)")
 }
 
 func setGetCommands() {
@@ -128,10 +131,35 @@ func handleLockCommand() {
 		exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
 	}
 
+	tryUntil := time.Now().Add(time.Duration(LockTimeout) * time.Second)
 	data, _ := ioutil.ReadAll(response.Body)
 
 	if response.StatusCode != 200 {
-		exitWithMessage("Could not lock mutex!")
+		if LockTimeout > 0 {
+			pollTime := 5
+
+			if LockTimeout < 5 {
+				pollTime = LockTimeout
+			}
+
+			for {
+				time.Sleep(time.Duration(pollTime) * time.Second)
+				if time.Now().After(tryUntil) {
+					exitWithMessage("Timeout ellapsed. Could not lock mutex!")
+				}
+				response, err = http.Get("http://localhost:3002/v1/mutex/" + LockName + "/lock")
+				if err != nil {
+					exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
+				}
+				data, _ = ioutil.ReadAll(response.Body)
+
+				if response.StatusCode == 200 {
+					break
+				}
+			}
+		} else {
+			exitWithMessage("Could not lock mutex!")
+		}
 	}
 
 	switch LockOutput {
