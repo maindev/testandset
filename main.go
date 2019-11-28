@@ -20,7 +20,7 @@ type LockAnswer struct {
 }
 
 func exitWithMessage(message string) {
-	fmt.Println(message)
+	log.Println(message)
 	os.Exit(1)
 }
 
