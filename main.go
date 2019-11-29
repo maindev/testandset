@@ -29,6 +29,7 @@ var Verbose bool
 var LockName string
 var LockOutput string
 var LockTimeout int
+var LockOwner string
 
 var GetName string
 
@@ -125,6 +126,7 @@ func setLockCommands() {
 	LockCommand.MarkFlagRequired("name")
 	LockCommand.Flags().StringVarP(&LockOutput, "output", "o", "json", "Formats the output {json|token}")
 	LockCommand.Flags().IntVarP(&LockTimeout, "timeout", "t", 0, "Time in seconds with automatically trying to lock a mutex, when it is already lock by someone else")
+	LockCommand.Flags().StringVarP(&LockOwner, "owner", "O", "", "Owner of the mutex (can be seen by everyone knowing the mutex name)")
 }
 
 func setGetCommands() {
@@ -159,7 +161,7 @@ func writeVerboseMessage(message string) {
 	}
 }
 
-func tryLockViaPolling(tryUntil time.Time) []byte {
+func tryLockViaPolling(url string, tryUntil time.Time) []byte {
 	pollTime := 5
 
 	if LockTimeout < 5 {
@@ -175,7 +177,7 @@ func tryLockViaPolling(tryUntil time.Time) []byte {
 		if time.Now().After(tryUntil) {
 			exitWithMessage("Timeout ellapsed. Could not lock mutex!")
 		}
-		response, err := http.Get("http://localhost:3002/v1/mutex/" + LockName + "/lock")
+		response, err := http.Get(url)
 		if err != nil {
 			exitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
 		}
@@ -213,6 +215,11 @@ func setLockOutput(data []byte) {
 
 func handleLockCommand() {
 	url := "http://localhost:3002/v1/mutex/" + LockName + "/lock"
+
+	if LockOwner != "" {
+		url = url + "?owner=" + LockOwner
+	}
+
 	writeVerboseMessage("Executing " + url)
 	response, err := http.Get(url)
 	if err != nil {
@@ -230,7 +237,7 @@ func handleLockCommand() {
 	if response.StatusCode != 200 {
 		writeVerboseMessage("StatusCode != 200 ")
 		if LockTimeout > 0 {
-			data = tryLockViaPolling(tryUntil)
+			data = tryLockViaPolling(url, tryUntil)
 		} else {
 			exitWithMessage("Could not lock mutex!")
 		}

@@ -7,10 +7,10 @@ Commands
 
 `lock` - You can create a mutex with your custom name. The output can be a json-object or a pure refresh token. You can set a timeout, in which `lock` automatically tries to lock again at intervals.
 
-Possible parameters are: `--name, -n $MUTEX_NAME`, `--output, -o [json|token]` (optional) and `--timeout, -t (time in seconds)` (optional)
+Possible parameters are: `--name, -n $MUTEX_NAME`, `--output, -o [json|token]` (optional), `--timeout, -t (time in seconds)` (optional) and `--owner, -O $MUTEX_OWNER_NAME`
 
 ```
-$ testandset mutex lock --name MyMutex --output json --timeout 60
+$ testandset mutex lock --name MyMutex --output json --timeout 60 --owner main.dev
 ```
 
 `get` - You can check if a mutex with a specific name currently exists.
