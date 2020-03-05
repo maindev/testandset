@@ -30,7 +30,7 @@ func GetUnlockCommand() *cobra.Command {
 }
 
 func handleUnlockCommand() {
-	response, err := util.APIGet("mutex/" + unlockName + "/unlock/" + unlockToken)
+	response, err := util.APIGet("mutex/" + unlockName + "/unlock?token=" + unlockToken)
 	if err != nil {
 		util.ExitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
 	} else {

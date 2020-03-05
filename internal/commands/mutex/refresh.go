@@ -30,7 +30,7 @@ func GetRefreshCommand() *cobra.Command {
 }
 
 func handleRefreshCommand() {
-	response, err := util.APIGet("mutex/" + refreshName + "/refresh/" + refreshToken)
+	response, err := util.APIGet("mutex/" + refreshName + "/refresh?token=" + refreshToken)
 	if err != nil {
 		util.ExitWithMessage(fmt.Sprintf("The HTTP request failed with error %s\n", err))
 	} else {
