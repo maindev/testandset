@@ -38,7 +38,7 @@ func tryAutoRefresh() {
 	util.WriteVerboseMessage(fmt.Sprintf("Sleeping for %v", sleepTime))
 	time.Sleep(sleepTime)
 
-	response, err := util.APIGet("mutex/" + autoRefreshName + "/refresh/" + autoRefreshToken)
+	response, err := util.APIGet("mutex/" + autoRefreshName + "/refresh?token=" + autoRefreshToken)
 	if err != nil {
 		util.ExitWithMessage(fmt.Sprintf("The HTTP request failed with error %s", err))
 	}
@@ -68,7 +68,7 @@ func unlockWhenInterrupted(c chan os.Signal) {
 	signal := <-c
 	util.WriteVerboseMessage(fmt.Sprintf("Received signal %s", signal))
 
-	response, err := util.APIGet("mutex/" + autoRefreshName + "/unlock/" + autoRefreshToken)
+	response, err := util.APIGet("mutex/" + autoRefreshName + "/unlock?token=" + autoRefreshToken)
 	if err != nil {
 		util.ExitWithMessage(fmt.Sprintf("The HTTP request failed with error %s", err))
 	}
